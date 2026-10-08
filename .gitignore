@@ -1,8 +1,3 @@
-# secrets / machine-specific
-accounts.json
-.env
-
-# runtime / generated (out/ IS committed: it is the scraping progress)
 .venv/
 __pycache__/
 *.pyc
