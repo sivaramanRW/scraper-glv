@@ -30,6 +30,8 @@ Resumable / crash-safe, Excel only (no side files): the workbook is created with
         village starts and is re-saved (atomically) after every fetched row. A blank sub-divisions cell = not fetched
         yet, so on restart the script opens the workbook and continues with the blank rows. A village is finished when
         no cell is blank. The only other state is out/.progress/account_idx (which account is in use).
+        out/ is committed to git: scripts/sync_progress.sh (pm2 land-progress-sync, every 10 min) pushes it, so a fresh clone
+        on another machine (scripts/setup.sh) resumes exactly where the last machine stopped. Run one machine at a time.
         Listing APIs never give up (retry + re-login), transient check-areg errors are retried (never stored as
         "no sub-divisions"), and any unexpected exception restarts the browser and resumes from the same row.
         Older files without lat/lon in the name are backfilled: the centre is fetched once and the file is renamed.
@@ -57,6 +59,9 @@ from playwright.sync_api import sync_playwright, Error as PWError
 from openpyxl import Workbook, load_workbook
 
 HERE = Path(__file__).parent
+for _line in (HERE / ".env").read_text().splitlines() if (HERE / ".env").exists() else []:  # .env = defaults only
+    if _line.strip() and not _line.lstrip().startswith("#") and "=" in _line:
+        _k, _v = _line.split("=", 1); os.environ.setdefault(_k.strip(), _v.strip().strip("'\""))
 URL = "https://tngis.tn.gov.in/apps/gi_viewer/map-viewer/index.html"
 API = "https://tngis.tn.gov.in/apps/generic_api/v2/"
 CHROME = "/usr/bin/google-chrome"

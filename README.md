@@ -36,6 +36,27 @@ The run is resumable: every fetched row is saved to the workbook immediately,
 so restarting continues from the first blank row. The only other state is
 `out/.progress/account_idx[.k]` (which account each worker is on).
 
+## Progress and moving to another machine
+
+`out/` (the workbooks and `out/.progress/`) is committed. The pm2 job
+`land-progress-sync` runs `scripts/sync_progress.sh` every 10 minutes: it
+commits `out/`, pulls with rebase and pushes. So on any machine:
+
+```bash
+git clone https://github.com/sivaramanRW/scraper-glv.git && cd scraper-glv
+scripts/setup.sh            # venv, chromium, pulls latest progress, creates accounts.json/.env from the examples
+#  -> put the real accounts in accounts.json, the captcha API URLs/token in .env
+pm2 start ecosystem.config.js && pm2 save
+```
+
+and it continues from the first unfinished row of the first unfinished village.
+Run one machine at a time: two clones scraping the same villages would fight
+over the same workbooks (the sync keeps the pushing machine's copy on a
+conflict). Right after a clone every unfinished workbook looks freshly written,
+so the workers defer those for 3 minutes before resuming them; that is normal.
+Pushing needs git credentials on that machine (`gh auth login` then
+`gh auth setup-git`, or an SSH remote).
+
 ## Captcha
 
 Login captchas are read by a Qwen3-VL HTTP API fleet (the `vlm-api` service).
@@ -43,7 +64,7 @@ Login captchas are read by a Qwen3-VL HTTP API fleet (the `vlm-api` service).
 | env | meaning |
 | --- | --- |
 | `CAPTCHA_API_URLS` | comma-separated base URLs, e.g. `http://host:8091,http://host:8093`. `/v1/describe/base64` is appended. |
-| `CAPTCHA_API_TOKEN` | bearer token, or |
+| `CAPTCHA_API_TOKEN` | bearer token (put it in `.env`, see `.env.example`), or |
 | `CAPTCHA_API_TOKEN_FILE` | file holding `VLM_API_TOKENS=...` (the API's own `.env`) |
 | `CAPTCHA_LEN` | expected length, default 6; other lengths are discarded and the captcha refreshed |
 | `CAPTCHA_PROMPT` | prompt sent with the image |

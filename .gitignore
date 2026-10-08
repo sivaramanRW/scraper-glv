@@ -1,12 +1,11 @@
-# secrets
+# secrets / machine-specific
 accounts.json
 .env
 
-# runtime / generated
+# runtime / generated (out/ IS committed: it is the scraping progress)
 .venv/
 __pycache__/
 *.pyc
-out/
 logs/
 captcha*.png
 *.tmp.xlsx
