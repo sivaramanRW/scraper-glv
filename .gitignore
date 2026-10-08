@@ -1,0 +1,14 @@
+# secrets
+accounts.json
+.env
+
+# runtime / generated
+.venv/
+__pycache__/
+*.pyc
+out/
+logs/
+captcha*.png
+*.tmp.xlsx
+register_accounts/
+backup/*.tar.gz
