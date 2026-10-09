@@ -52,6 +52,9 @@ Two server-side limits are honoured:
   * a burst detector ("Unusual request pattern detected ... slow down", HTTP 429) that trips when calls come faster
     than roughly one every few seconds. Measured: 1 call / 5 s never trips it. Default --delay is 4 s; on a 429 the
     script waits BURST_WAIT and increases the delay by 1 s (up to 10 s) for the rest of the run.
+Proxy: PROXY_URL (env, http://user:pass@host:port) sends ALL browser traffic to the site through that proxy; the captcha
+API calls (LAN) stay direct. The exit IP is printed at every login. With a rotating proxy (PROXY_ROTATION_S, default
+120 s) a per-network login lockout is only waited out for one rotation + margin instead of the hours the server asks for.
 """
 import argparse, base64, json, os, re, sys, time, traceback, urllib.request
 from pathlib import Path
@@ -110,6 +113,22 @@ CAPTCHA_PROMPT = os.environ.get("CAPTCHA_PROMPT", "This is a CAPTCHA image conta
                                 "case-sensitive) with distracting lines. Reply with ONLY the 6 characters, nothing else.")
 CAPTCHA_API_TIMEOUT = int(os.environ.get("CAPTCHA_API_TIMEOUT", "60"))  # s; cold model load is ~2-3 s, a queued GPU can be slower
 MAX_LOGIN_TRIES = int(os.environ.get("MAX_LOGIN_TRIES", "0"))  # 0 = retry the same account forever
+PROXY_URL = os.environ.get("PROXY_URL", "").strip()  # http://user:pass@host:port -> every browser request goes through it
+PROXY_ROTATION_S = int(os.environ.get("PROXY_ROTATION_S", "120"))  # the proxy's auto IP rotation period
+IP_ECHO = "https://api.ipify.org"  # fetched through the browser after each login page load to log the exit IP
+
+
+def proxy_settings():
+    """Playwright proxy dict from PROXY_URL (credentials split out: chromium needs them separately), or None."""
+    if not PROXY_URL: return None
+    from urllib.parse import urlparse, unquote
+    u = urlparse(PROXY_URL if "://" in PROXY_URL else "http://" + PROXY_URL)
+    px = {"server": f"{u.scheme}://{u.hostname}:{u.port or 80}", "bypass": "localhost,127.0.0.1"}
+    if u.username: px["username"] = unquote(u.username); px["password"] = unquote(u.password or "")
+    return px
+
+
+PROXY = proxy_settings()
 LOGIN_RETRY_DELAY = 3  # seconds between captcha attempts on the same account
 PAGE_TIMEOUT = 120_000  # ms to wait for the (often slow) site to show the login form
 SLOW_SITE_WAIT = 20  # seconds to wait before retrying when the page did not load
@@ -204,12 +223,23 @@ LOCKOUT_MARGIN = 90  # s added to the server's "try again in" so the first retry
 
 def lockout_seconds(msg):
     """Seconds to wait if msg is a per-network lockout ('... Try again in 4hr 12min.'), else 0.
-    A lockout without a parsable time waits 15 min."""
+    A lockout without a parsable time waits 15 min. Behind a rotating proxy the lockout is per exit IP, so only one
+    rotation (+ margin) is waited: the next attempt comes from a new IP."""
     m = msg.lower()
     if "too many" not in m and "try again in" not in m: return 0
+    if PROXY: return PROXY_ROTATION_S + 30
     t = re.search(r"try again in\s*(?:(\d+)\s*h(?:ou)?rs?)?\s*(?:(\d+)\s*min)?", m)
     h, mi = (int(t.group(1) or 0), int(t.group(2) or 0)) if t else (0, 0)
     return (h * 3600 + mi * 60 or 900) + LOCKOUT_MARGIN
+
+
+def exit_ip(ctx):
+    """Public IP the browser's requests arrive from (via the proxy when one is set), or '?' if the echo failed."""
+    pg = ctx.new_page()
+    try:
+        pg.goto(IP_ECHO, wait_until="domcontentloaded", timeout=30_000); return pg.inner_text("body").strip()[:45] or "?"
+    except PWError as e: return f"? ({str(e).splitlines()[0][:60]})"
+    finally: pg.close()
 
 
 class Session:
@@ -243,7 +273,7 @@ class Session:
             if self.ctx: self.ctx.close()
             self.ctx = self.b.new_context(viewport={"width": 1920, "height": 1080}, device_scale_factor=3)
             self.pg = pg = self.ctx.new_page()
-            print(f"Logging in with account #{self.idx} ({acc['mobile']})")
+            print(f"Logging in with account #{self.idx} ({acc['mobile']})" + (f" via proxy, exit IP {exit_ip(self.ctx)}" if PROXY else ""))
             try:
                 # the site is often slow and a map page never goes network-idle; wait for the login UI instead
                 pg.goto(URL, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
@@ -502,7 +532,8 @@ def main():
     while True:
         try:
             with sync_playwright() as p:
-                b = p.chromium.launch(executable_path=CHROME if os.path.exists(CHROME) else None, headless=True, args=["--no-sandbox"])
+                b = p.chromium.launch(executable_path=CHROME if os.path.exists(CHROME) else None, headless=True, args=["--no-sandbox"],
+                                      proxy=PROXY)  # None = direct; otherwise every request of every context goes through it
                 S = Session(b)
                 S.login()
                 run(S)

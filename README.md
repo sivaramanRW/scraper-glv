@@ -73,6 +73,14 @@ Worker k starts at URL k and rotates per attempt; if one API is down the others
 are tried. When `CAPTCHA_API_URLS` is empty a local Ollama vision model is used
 (`OLLAMA_URL`, `CAPTCHA_MODEL`).
 
+## Proxy
+
+Set `PROXY_URL=http://user:pass@host:port` in `.env` and every browser request to
+the site goes through it (the captcha API calls stay direct). The exit IP is
+printed at each login. With a rotating proxy set `PROXY_ROTATION_S` (default 120)
+to its rotation period: a per-network login lockout is then only waited out for
+one rotation instead of the hours the server asks for.
+
 ## Server limits handled
 
 * 50 check-areg calls per account per hour: the script switches account and

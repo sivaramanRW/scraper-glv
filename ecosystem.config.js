@@ -37,6 +37,9 @@ const worker = (k) => ({
     OLLAMA_URL: cfg("OLLAMA_URL", "http://localhost:11434"),
     CAPTCHA_MODEL: cfg("CAPTCHA_MODEL", "qwen2.5vl:7b"),
     NO_MANUAL_CAPTCHA: "1",                                 // never block on a terminal prompt under pm2
+    // Optional proxy for all browser traffic to the site (http://user:pass@host:port); captcha API calls stay direct.
+    PROXY_URL: cfg("PROXY_URL"),
+    PROXY_ROTATION_S: cfg("PROXY_ROTATION_S", "120"),       // the proxy's auto IP rotation period: lockouts are only waited this long
   },
   out_file: `logs/out-${k}.log`,
   error_file: `logs/err-${k}.log`,
