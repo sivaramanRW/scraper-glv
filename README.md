@@ -81,6 +81,23 @@ printed at each login. With a rotating proxy set `PROXY_ROTATION_S` (default 120
 to its rotation period: a per-network login lockout is then only waited out for
 one rotation instead of the hours the server asks for.
 
+### Mobile proxy (Android phone, new IP every 5 minutes)
+
+The phone's mobile data is the proxy; the laptop's own internet is untouched.
+
+1. Phone: Wi-Fi off, mobile data on, USB cable in, USB tethering on, USB debugging on (authorise this computer),
+   Every Proxy: SOCKS proxy started, battery set to unrestricted.
+2. Laptop: `sudo nmcli connection modify "<tether connection>" ipv4.never-default yes` (re-activate it) so the phone link
+   never becomes the default route. `sudo apt install adb`, then `adb devices` must list the phone as `device`.
+3. Check: `curl --proxy socks5h://<phone ip>:1080 https://api.ipify.org` differs from a plain `curl https://api.ipify.org`.
+4. `.env`: `PROXY_URL=socks5://<phone ip>:1080`, `PROXY_ROTATION_S=300`, `ROTATE_EVERY_S=300`.
+5. `pm2 start ecosystem.config.js` also starts `land-phone-rotate` (`scripts/rotate_phone_ip.py`, log `logs/rotate.log`): every
+   `ROTATE_EVERY_S` it toggles mobile data over adb, waits for the proxy and checks the IPv4 exit IP changed (toggles again
+   if the carrier returned the same one). Try one rotation by hand: `PROXY_URL=socks5://<phone ip>:1080 python3 scripts/rotate_phone_ip.py --once`.
+
+Requests in flight during the ~10-30 s a rotation takes fail and are retried by the scraper. All workers share the phone's
+one IP, so start with a single worker. Chromium does not support SOCKS5 with a username/password (Every Proxy: Auth None).
+
 ## Server limits handled
 
 * 50 check-areg calls per account per hour: the script switches account and

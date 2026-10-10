@@ -57,4 +57,25 @@ const progressSync = {
   error_file: "logs/sync.log",
   time: true,
 };
-module.exports = { apps: [...Array.from({ length: WORKERS }, (_, k) => worker(k)), progressSync] };
+// Optional (ROTATE_EVERY_S > 0 in .env): every N seconds toggle the phone's mobile data over adb so the SOCKS proxy
+// (PROXY_URL=socks5://<phone ip>:1080) gets a new mobile IP. Set PROXY_ROTATION_S to the same N (scripts/rotate_phone_ip.py).
+const phoneRotate = {
+  name: "land-phone-rotate",
+  script: "scripts/rotate_phone_ip.py",
+  interpreter: "python3",
+  interpreter_args: "-u",
+  cwd: __dirname,
+  autorestart: true,
+  restart_delay: 30000,
+  env: {
+    PROXY_URL: cfg("PROXY_URL"),
+    ROTATE_EVERY_S: cfg("ROTATE_EVERY_S", "0"),
+    ROTATE_MODE: cfg("ROTATE_MODE", "data"),                // data | airplane
+    ADB_SERIAL: cfg("ADB_SERIAL"),
+  },
+  out_file: "logs/rotate.log",
+  error_file: "logs/rotate.log",
+  time: true,
+};
+const rotating = parseInt(cfg("ROTATE_EVERY_S", "0"), 10) > 0;
+module.exports = { apps: [...Array.from({ length: WORKERS }, (_, k) => worker(k)), progressSync, ...(rotating ? [phoneRotate] : [])] };
