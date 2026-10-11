@@ -38,7 +38,7 @@ def log(msg): print(time.strftime("%Y-%m-%dT%H:%M:%S"), msg, flush=True)
 def proxy_arg():
     u = urlparse(PROXY_URL if "://" in PROXY_URL else "socks5://" + PROXY_URL)
     if not u.hostname: sys.exit("PROXY_URL is not set (socks5://<phone ip>:1080)")
-    return f"socks5h://{u.hostname}:{u.port or 1080}"  # h = DNS is resolved by the phone, like chromium does
+    return f"socks5h://{u.hostname}:{u.port or 1080}"  # h = DNS is resolved by the phone, like a browser would
 
 
 def exit_ip(host="api.ipify.org"):

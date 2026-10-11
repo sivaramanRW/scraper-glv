@@ -17,7 +17,7 @@ const cfg = (k, d = "") => process.env[k] || dotenv[k] || d;
 const worker = (k) => ({
   name: `land-scrape-${k}`,
   script: "scrape.py",
-  interpreter: path.join(__dirname, ".venv/bin/python"), // virtualenv with playwright + openpyxl
+  interpreter: path.join(__dirname, ".venv/bin/python"), // virtualenv with requests, cryptography, PySocks + openpyxl
   interpreter_args: "-u",                                   // unbuffered so pm2 logs show progress live
   cwd: __dirname,
   args: `--worker ${k}/${WORKERS}`,                         // add e.g. " --district Ariyalur" to restrict
@@ -36,10 +36,11 @@ const worker = (k) => ({
     // Fallback only when CAPTCHA_API_URLS is empty: local Ollama vision model(s)
     OLLAMA_URL: cfg("OLLAMA_URL", "http://localhost:11434"),
     CAPTCHA_MODEL: cfg("CAPTCHA_MODEL", "qwen2.5vl:7b"),
-    NO_MANUAL_CAPTCHA: "1",                                 // never block on a terminal prompt under pm2
-    // Optional proxy for all browser traffic to the site (http://user:pass@host:port); captcha API calls stay direct.
+    // IPS_PROXY_METHOD=ROTATION_IP: every API call goes through PROXY_URL (the phone proxy, see land-phone-rotate below);
+    // ONLINE_PROXY: worker k uses the k-th of ONLINE_PROXY_URLS=url0,url1,url2. The captcha API calls (LAN) stay direct.
+    IPS_PROXY_METHOD: cfg("IPS_PROXY_METHOD", "ROTATION_IP"),
     PROXY_URL: cfg("PROXY_URL"),
-    PROXY_ROTATION_S: cfg("PROXY_ROTATION_S", "120"),       // the proxy's auto IP rotation period: lockouts are only waited this long
+    ONLINE_PROXY_URLS: cfg("ONLINE_PROXY_URLS"),
   },
   out_file: `logs/out-${k}.log`,
   error_file: `logs/err-${k}.log`,
@@ -58,7 +59,7 @@ const progressSync = {
   time: true,
 };
 // Optional (ROTATE_EVERY_S > 0 in .env): every N seconds toggle the phone's mobile data over adb so the SOCKS proxy
-// (PROXY_URL=socks5://<phone ip>:1080) gets a new mobile IP. Set PROXY_ROTATION_S to the same N (scripts/rotate_phone_ip.py).
+// (PROXY_URL=socks5://<phone ip>:1080) gets a new mobile IP. (scripts/rotate_phone_ip.py)
 const phoneRotate = {
   name: "land-phone-rotate",
   script: "scripts/rotate_phone_ip.py",
@@ -77,5 +78,5 @@ const phoneRotate = {
   error_file: "logs/rotate.log",
   time: true,
 };
-const rotating = parseInt(cfg("ROTATE_EVERY_S", "0"), 10) > 0;
+const rotating = parseInt(cfg("ROTATE_EVERY_S", "0"), 10) > 0 && cfg("IPS_PROXY_METHOD", "ROTATION_IP").toUpperCase() === "ROTATION_IP";
 module.exports = { apps: [...Array.from({ length: WORKERS }, (_, k) => worker(k)), progressSync, ...(rotating ? [phoneRotate] : [])] };

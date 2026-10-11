@@ -6,3 +6,4 @@ captcha*.png
 *.tmp.xlsx
 register_accounts/
 backup/*.tar.gz
+state/

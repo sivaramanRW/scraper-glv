@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# One-time setup after `git clone`: venv, browser, config files, latest progress.
+# One-time setup after `git clone`: venv, config files, latest progress.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m venv .venv
 .venv/bin/pip install -q -r requirements.txt
-if [ ! -x /usr/bin/google-chrome ]; then
-  .venv/bin/playwright install chromium   # add --with-deps (needs sudo) if Chromium fails to start
-fi
 git pull -q --rebase origin main || echo "!! git pull failed (no network / auth?) - continuing with the local progress"
 if [ ! -f accounts.json ]; then
   cp accounts.example.json accounts.json
