@@ -17,8 +17,8 @@ worker has 23 accounts.
 Accounts: a worker takes its accounts in turn. A *visit* = get a session for the account (saved tokens are refreshed, so a login
 with captcha is only needed when the refresh token is dead; the captcha is read by the Qwen3-VL API fleet CAPTCHA_API_URLS), then
 at most ACCOUNT_BUDGET (40) check-areg calls, --delay (5 s) apart, then on to the next account. The site's limits per account
-are 50 calls/1 h, 125/4 h, 175/8 h and 250/24 h and it only reports the one that trips, so the script keeps the time of every
-call (out/.progress/calls[.k]) and never exceeds CALL_CAPS (a margin below each limit: 62 min:40, 4 h 2 m:112, 8 h 2 m:157,
+are 50 calls/1 h, 125/4 h, 150/6 h, 175/8 h and 250/24 h and it only reports the one that trips, so the script keeps the time of every
+call (out/.progress/calls[.k]) and never exceeds CALL_CAPS (a margin below each limit: 62 min:40, 4 h 2 m:112, 6 h 2 m:135, 8 h 2 m:157,
 24 h 2 m:225). An account with less than ACCOUNT_MIN_VISIT calls of room is left alone; when no account has room the worker
 sleeps until the first one has. A refusal the server does give ("Retry after ...") rests that account for the time it names
 (out/.progress/cooldowns[.k]). The last account used is out/.progress/account_idx[.k].
@@ -167,7 +167,7 @@ CRASH_WAIT = 30  # seconds before resuming after an unexpected exception
 ACCOUNT_BUDGET = int(os.environ.get("ACCOUNT_BUDGET", "40"))  # check-areg calls per visit
 ACCOUNT_MIN_VISIT = int(os.environ.get("ACCOUNT_MIN_VISIT", "20"))  # an account with less room than this is not worth a login
 # (window seconds, max calls): the site's 50/1h, 125/4h, 175/8h and 250/24h each with a margin (+2 min on the window)
-CAPS = [tuple(int(x) for x in c.split(":")) for c in os.environ.get("CALL_CAPS", "3720:40,14520:112,28920:157,86520:225").split(",")]
+CAPS = [tuple(int(x) for x in c.split(":")) for c in os.environ.get("CALL_CAPS", "3720:40,14520:112,21720:135,28920:157,86520:225").split(",")]
 # check-areg messages that mean "try again / log in again", NOT "this survey number has no sub-divisions"
 TRANSIENT = ("session", "login", "unauthor", "not ready", "decrypt", "expired", "token", "failed to check")
 

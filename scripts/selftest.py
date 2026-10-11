@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Offline checks (no network, no account used): crypto round trip, parsers, and a 24 h simulation of one worker's account
-scheduling against a fake server that enforces the site's four limits (50/1h, 125/4h, 175/8h, 250/24h).
+scheduling against a fake server that enforces the site's five limits (50/1h, 125/4h, 150/6h, 175/8h, 250/24h).
     .venv/bin/python scripts/selftest.py"""
 import sys, tempfile, time
 from pathlib import Path
@@ -27,7 +27,7 @@ def vsleep(s): clock[0] += max(0, s)
 time.sleep = vsleep
 import scrape as s
 
-LIMITS = [(3600, 50), (4 * 3600, 125), (8 * 3600, 175), (24 * 3600, 250)]
+LIMITS = [(3600, 50), (4 * 3600, 125), (6 * 3600, 150), (8 * 3600, 175), (24 * 3600, 250)]
 stats = {"refused": 0, "calls": {}, "logins": 0}
 
 class FakeApi:

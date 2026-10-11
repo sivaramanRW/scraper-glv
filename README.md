@@ -112,9 +112,9 @@ so no new login is needed). All workers share the phone's one IP, so a login loc
 
 ## Server limits handled
 
-* Per account the site allows 50 check-areg calls per hour, 125 per 4 h, 175 per 8 h and 250 per 24 h, and only reports the
+* Per account the site allows 50 check-areg calls per hour, 125 per 4 h, 150 per 6 h, 175 per 8 h and 250 per 24 h, and only reports the
   one that trips. The script never reaches any of them: it keeps the time of every call (`calls[.k]`) and stays under
-  `CALL_CAPS` (default `3720:40,14520:112,28920:157,86520:225`, each a margin below the limit; +2 min on every window).
+  `CALL_CAPS` (default `3720:40,14520:112,21720:135,28920:157,86520:225`, each a margin below the limit; +2 min on every window).
 * A worker uses its 23 accounts in turn: a visit is up to `ACCOUNT_BUDGET` (40) calls, `--delay` (5 s) apart, then the next
   account. An account with less than `ACCOUNT_MIN_VISIT` (20) calls of room is skipped, and when no account has room the
   worker sleeps until the first has. About 225 calls per account per day, so roughly 5,000 per worker.
