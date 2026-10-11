@@ -48,13 +48,17 @@ Access/refresh tokens are in `state/tokens/` (gitignored, never inside `out/`).
 commits `out/`, pulls with rebase and pushes. So on any machine:
 
 ```bash
-git clone https://github.com/sivaramanRW/scraper-glv.git && cd scraper-glv
+git clone -b <branch> https://github.com/sivaramanRW/scraper-glv.git && cd scraper-glv   # the branch you ran, e.g. direct-api-fetch
 scripts/setup.sh            # venv, pulls latest progress, creates accounts.json/.env from the examples
 #  -> put the real accounts in accounts.json, the captcha API URLs/token in .env
 pm2 start ecosystem.config.js && pm2 save
 ```
 
 and it continues from the first unfinished row of the first unfinished village.
+The account state moves with it (`out/.progress/calls*` = every call's time, `cooldowns*`, `lockout*`, `account_idx*`), so the new
+machine knows which accounts are resting; it needs a correct clock (NTP), since the times are absolute. The tokens in `state/tokens/`
+are gitignored: without them each account logs in once with a captcha on the new machine (or copy `state/` over with scp).
+The sync script commits and pushes the branch the clone is on, not only `main`.
 Run one machine at a time: two clones scraping the same villages would fight
 over the same workbooks (the sync keeps the pushing machine's copy on a
 conflict). Right after a clone every unfinished workbook looks freshly written,

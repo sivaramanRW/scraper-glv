@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m venv .venv
 .venv/bin/pip install -q -r requirements.txt
-git pull -q --rebase origin main || echo "!! git pull failed (no network / auth?) - continuing with the local progress"
+git pull -q --rebase origin "$(git rev-parse --abbrev-ref HEAD)" || echo "!! git pull failed (no network / auth?) - continuing with the local progress"
 if [ ! -f accounts.json ]; then
   cp accounts.example.json accounts.json
   echo "!! accounts.json created from the example: put the real site accounts in it"
