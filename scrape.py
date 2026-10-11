@@ -47,8 +47,11 @@ A wrong captcha is simply retried with a fresh captcha on the SAME account, fore
 (manual input is only asked for if the reader returns nothing AND you are in a real terminal).
 MAX_LOGIN_TRIES (env, default 0 = unlimited) can cap the retries per account, after which the account is skipped.
 Two server-side limits are honoured:
-  * 50 check-areg calls per account per hour: when `remaining` reaches 0 the script switches account; only after
-    every account has been used does it wait for the window to reset.
+  * 50 check-areg calls per account per hour: the script never reaches it. After ACCOUNT_BUDGET calls (env, default 40,
+    counted by the server's own `count`) the account rests ACCOUNT_REST_MIN minutes (default 62 = 1 h window + 2 min) and the
+    script moves to the next one; the rest is saved in out/.progress/cooldowns[.k], so a restart does not use a resting account.
+    When every account of the worker is resting it sleeps until the first is free. A limit the server still reports
+    ("Retry after Nh") is honoured as before.
   * a burst detector ("Unusual request pattern detected ... slow down", HTTP 429) that trips when calls come faster
     than roughly one every few seconds. Measured: 1 call / 5 s never trips it. Default --delay is 4 s; on a 429 the
     script waits BURST_WAIT and increases the delay by 1 s (up to 10 s) for the rest of the run.
@@ -89,6 +92,7 @@ ACCOUNT_POOL = list(range(len(ACCOUNTS)))[WK::NWK]
 if WK: ACCOUNT_POOL.reverse()  # extra workers start from the far end of their share, away from where a lone run left off
 assert ACCOUNT_POOL, "more workers than accounts"
 IDX_FILE = OUT / ".progress" / ("account_idx" if WK == 0 else f"account_idx.{WK}")
+COOL_FILE = OUT / ".progress" / ("cooldowns" if WK == 0 else f"cooldowns.{WK}")  # {global account idx: epoch it is usable again}
 ACTIVE_WINDOW = 180  # s: a workbook saved more recently than this is being written by another process
 OLLAMA = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 VLM_MODELS = [m.strip() for m in os.environ.get("CAPTCHA_MODEL", "qwen2.5vl:7b").split(",") if m.strip()]
@@ -142,7 +146,9 @@ TRANSIENT = ("session", "login", "unauthor", "not ready", "decrypt", "expired", 
 def save_wb(wb, f):
     """Atomic save: a crash mid-write can never leave a truncated workbook behind."""
     tmp = f.with_name(f"{f.stem}.{os.getpid()}.tmp.xlsx"); wb.save(tmp); os.replace(tmp, f)  # pid: two processes never share a tmp
-COOLDOWN_H = 3.0  # hours an account rests after its 50 calls (server says "Retry after 3h"); parsed from the message when present
+COOLDOWN_H = 3.0  # hours an account rests after the server refused it ("Retry after 3h"); parsed from the message when present
+ACCOUNT_BUDGET = int(os.environ.get("ACCOUNT_BUDGET", "40"))  # check-areg calls per account per hour; the site allows 50, stopping at 40 never trips it
+ACCOUNT_REST_S = int(os.environ.get("ACCOUNT_REST_MIN", "62")) * 60  # rest after the budget: the 1 h window plus 2 min
 INTERACTIVE = sys.stdin.isatty() and not os.environ.get("NO_MANUAL_CAPTCHA")
 
 
@@ -246,7 +252,9 @@ class Session:
     """Holds the current browser context/page and the account it is logged in with."""
     def __init__(self, browser):
         self.b, self.ctx, self.pg = browser, None, None
-        self.pool, self.pos, self.exhausted = ACCOUNT_POOL, 0, {}  # exhausted: global account idx -> epoch when usable again
+        self.pool, self.pos = ACCOUNT_POOL, 0
+        try: self.exhausted = {int(k): float(v) for k, v in json.loads(COOL_FILE.read_text()).items() if int(k) in self.pool}
+        except (OSError, ValueError): self.exhausted = {}  # global account idx -> epoch when usable again (kept in COOL_FILE)
         try: saved = int(IDX_FILE.read_text()) if IDX_FILE.exists() else self.pool[0]
         except ValueError: saved = self.pool[0]
         # resume at the saved account, or (after a lone run is split into workers) at the next one of ours past it
@@ -315,17 +323,22 @@ class Session:
                 self.skip_account(f"{fails} failed logins"); fails = 0; continue
             time.sleep(LOGIN_RETRY_DELAY); continue
 
+    def pick(self, skip_current=False):
+        """Move to an account that is not resting (the current one counts unless skip_current); if every account of this
+        worker is resting, sleep until the first one is free."""
+        for n in range(len(self.pool)):
+            if n or skip_current: self.pos = (self.pos + 1) % len(self.pool)
+            if self.exhausted.get(self.idx, 0) <= time.time(): return
+        self.pos = min(range(len(self.pool)), key=lambda i: self.exhausted[self.pool[i]])
+        wait = max(0, self.exhausted[self.idx] - time.time()) + 15
+        print(f"  all {len(self.pool)} accounts of this worker are cooling down; sleeping {wait / 60:.0f} min until #{self.idx} is free")
+        time.sleep(wait)
+
     def next_account(self, hours=COOLDOWN_H):
-        """Current account hit its quota: remember when it frees up, move to the next usable one, log in."""
+        """Current account is done for now: remember when it is usable again, move to the next usable one, log in."""
         self.exhausted[self.idx] = time.time() + hours * 3600
-        for _ in range(len(self.pool)):
-            self.pos = (self.pos + 1) % len(self.pool)
-            if self.exhausted.get(self.idx, 0) <= time.time(): break
-        else:  # every account of this worker is cooling down: sleep until the first one is free
-            self.pos = min(range(len(self.pool)), key=lambda i: self.exhausted[self.pool[i]])
-            wait = max(0, self.exhausted[self.idx] - time.time()) + 15
-            print(f"  all {len(self.pool)} accounts of this worker are cooling down; sleeping {wait / 60:.0f} min until #{self.idx} is free")
-            time.sleep(wait)
+        COOL_FILE.write_text(json.dumps(self.exhausted))
+        self.pick(skip_current=True)
         self.login()
 
 
@@ -499,8 +512,9 @@ def village(S, dc, dn, tc, tn, vc, vn):
         ws.cell(row, 2).value = ", ".join(subs) or "-"   # never leave a fetched row blank
         save_wb(wb, f)
         if i % 25 == 0: print(f"  {total - len(todo) + i}/{total} rate_limit={rl}")
-        if rl and rl.get("remaining") == 0:
-            print("  limit used up on this account, switching"); S.next_account()
+        if rl and rl.get("count", 0) >= ACCOUNT_BUDGET:  # the server's own count for this account's current hour
+            print(f"  account #{S.idx} used {rl['count']} calls this hour (budget {ACCOUNT_BUDGET}), resting it {ACCOUNT_REST_S // 60} min; switching")
+            S.next_account(ACCOUNT_REST_S / 3600)
         time.sleep(S.delay)
     print("  finished", f.name)
     return True
@@ -535,6 +549,7 @@ def main():
                 b = p.chromium.launch(executable_path=CHROME if os.path.exists(CHROME) else None, headless=True, args=["--no-sandbox"],
                                       proxy=PROXY)  # None = direct; otherwise every request of every context goes through it
                 S = Session(b)
+                S.pick()  # skip accounts still resting from before this (re)start
                 S.login()
                 run(S)
                 b.close()

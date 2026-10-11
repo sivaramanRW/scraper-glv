@@ -34,7 +34,8 @@ pm2 logs land-scrape-0
 
 The run is resumable: every fetched row is saved to the workbook immediately,
 so restarting continues from the first blank row. The only other state is
-`out/.progress/account_idx[.k]` (which account each worker is on).
+`out/.progress/account_idx[.k]` (which account each worker is on) and
+`out/.progress/cooldowns[.k]` (which accounts are resting, and until when).
 
 ## Progress and moving to another machine
 
@@ -100,8 +101,12 @@ one IP, so start with a single worker. Chromium does not support SOCKS5 with a u
 
 ## Server limits handled
 
-* 50 check-areg calls per account per hour: the script switches account and
-  remembers when each one frees up.
+* 50 check-areg calls per account per hour: the script never reaches it. An account
+  makes `ACCOUNT_BUDGET` calls (default 40, counted by the server's own `count`),
+  then rests `ACCOUNT_REST_MIN` minutes (default 62: the 1 h window plus 2 min) while
+  the worker moves to its next account. Resting accounts are saved in
+  `out/.progress/cooldowns[.k]`, so a restart does not log in with an account that is
+  still resting. Both values can be set in `.env`.
 * Burst detector (HTTP 429 "unusual request pattern"): waits 60 s and slows down.
 * Per-network login lockout ("Too many failed login attempts from this
   network. Try again in 4hr 12min."): parsed and slept out.
