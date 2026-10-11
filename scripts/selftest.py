@@ -19,7 +19,10 @@ print("crypto + parsers ok")
 
 # --- virtual clock: sleep() advances time instantly
 clock = [1_800_000_000.0]
-time.time = lambda: clock[0]
+def vtime():
+    clock[0] += 1e-6  # a real clock moves between two readings; a frozen one hid a bug where "now" was already in the past
+    return clock[0]
+time.time = vtime
 def vsleep(s): clock[0] += max(0, s)
 time.sleep = vsleep
 import scrape as s

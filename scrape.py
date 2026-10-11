@@ -224,15 +224,15 @@ class Pool:
         now = now or time.time(); st = self.calls.get(idx, [])
         return min(cap - sum(1 for t in st if now - t < win) for win, cap in CAPS)
 
-    def free_at(self, idx, need):
+    def free_at(self, idx, need, now=None):
         """Epoch at which idx has room for `need` more calls in every window."""
-        now = time.time(); st = sorted(self.calls.get(idx, [])); t_ok = now
+        now = now or time.time(); st = sorted(self.calls.get(idx, [])); t_ok = now
         for win, cap in CAPS:
             live = [t for t in st if now - t < win]; k = cap - need
             if len(live) > k: t_ok = max(t_ok, live[len(live) - k - 1] + win)  # the (n-k)-th oldest call must have expired
         return t_ok
 
-    def usable_at(self, idx): return max(self.blocked.get(idx, 0), self.free_at(idx, ACCOUNT_MIN_VISIT))
+    def usable_at(self, idx, now=None): return max(self.blocked.get(idx, 0), self.free_at(idx, ACCOUNT_MIN_VISIT, now))
 
     def record(self, idx):
         now = time.time(); keep = max(w for w, _ in CAPS)
@@ -251,8 +251,8 @@ class Pool:
             now = time.time()
             for i in range(n):
                 idx = self.pool[(self.pos + i) % n]
-                if self.usable_at(idx) <= now: self.pos = (self.pos + i) % n; return idx
-            wait = max(0, min(self.usable_at(g) for g in self.pool) - now) + 15
+                if self.usable_at(idx, now) <= now: self.pos = (self.pos + i) % n; return idx
+            wait = max(0, min(self.usable_at(g, now) for g in self.pool) - now) + 15
             print(f"  all {n} accounts of this worker are resting; sleeping {wait / 60:.0f} min until the first one has room")
             time.sleep(wait)
 
